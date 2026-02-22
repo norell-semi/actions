@@ -239,7 +239,7 @@ class VAPIClient:
         payload += "}"
         log(f"Launching VSIF: {vsif}")
         result = self.request("/rest/sessions/launch", "POST", payload)
-        session_id = result.get("value", "") if isinstance(result, dict) else ""
+        session_id = str(result.get("value", "")) if isinstance(result, dict) else ""
         if not session_id:
             raise VAPIError(0, f"No session ID returned for VSIF {vsif}. Response: {result}")
         log(f"  → Session ID: {session_id}")
@@ -851,7 +851,8 @@ def main() -> None:
     else:
         fail(f"Unknown mode: '{cfg.mode}'. Use 'launcher', 'api', 'batch', or 'collect'.")
 
-    # Set session IDs output
+    # Set session IDs output (coerce to str in case vAPI returned ints)
+    session_ids = [str(sid) for sid in session_ids]
     set_output("session-ids", ",".join(session_ids))
 
     # Wait for sessions if requested
