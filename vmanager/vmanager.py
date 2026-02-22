@@ -14,6 +14,8 @@ Supports:
   - Session status tracking via GitHub Action outputs
 """
 
+from __future__ import annotations
+
 import json
 import os
 import ssl
@@ -23,6 +25,7 @@ import urllib.error
 import urllib.request
 from base64 import b64encode
 from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 from xml.sax.saxutils import escape as xml_escape
 
 
