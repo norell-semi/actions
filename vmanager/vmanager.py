@@ -734,7 +734,7 @@ def run_launcher_mode(client: VAPIClient, cfg: Config) -> list[str]:
     # Write session IDs to output file
     with open("session_launch.output", "w") as f:
         for sid in session_ids:
-            f.write(sid + "\n")
+            f.write(f"${sid}\n")
 
     log_group_end()
     return session_ids
