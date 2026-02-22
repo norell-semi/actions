@@ -1,0 +1,253 @@
+name: 'Cadence vManager Action'
+description: 'Integrate with Cadence Verisium Manager (vManager) over REST API (vAPI) as a step in your GitHub Actions workflow.'
+author: 'Norell Design Group'
+
+branding:
+  icon: 'activity'
+  color: 'blue'
+
+inputs:
+  # --- Mode ---
+  mode:
+    description: >
+      Operation mode: 'launcher' to launch VSIF sessions, 'api' for free-style vAPI calls,
+      'batch' to monitor pre-launched sessions, 'collect' to monitor collected sessions.
+    required: true
+    default: 'launcher'
+
+  # --- Connection ---
+  vapi-url:
+    description: 'The URL of the vManager vAPI server (e.g. https://host:port/project_name/vapi)'
+    required: true
+  vapi-user:
+    description: 'Username for vAPI authentication'
+    required: false
+    default: 'vAPI'
+  vapi-password:
+    description: 'Password for vAPI authentication (use GitHub secrets)'
+    required: false
+    default: ''
+  auth-required:
+    description: 'Whether authentication is required for vAPI calls'
+    required: false
+    default: 'true'
+  conn-timeout:
+    description: 'Connection timeout in minutes'
+    required: false
+    default: '1'
+  read-timeout:
+    description: 'Read timeout in minutes'
+    required: false
+    default: '30'
+  ignore-ssl-errors:
+    description: 'Ignore SSL certificate errors'
+    required: false
+    default: 'true'
+
+  # --- Launcher Mode ---
+  vsif-path:
+    description: 'Path to the static VSIF file(s) on the NFS (semicolon-separated for multiple files)'
+    required: false
+    default: ''
+  vsif-input-file:
+    description: 'Path to a file containing VSIF paths (one per line) for dynamic launching'
+    required: false
+    default: ''
+  env-variables:
+    description: 'JSON string for session environment variables (e.g. {"VAR1":"val1","VAR2":"val2"})'
+    required: false
+    default: ''
+  attr-values:
+    description: >
+      Attribute values for the VSIF launch, as a JSON array of objects with name, value, type.
+      Example: [{"name":"attr1","value":"val1","type":"string"}]
+    required: false
+    default: ''
+  define-values:
+    description: >
+      Define parameter values for the VSIF launch, as a JSON array of objects with name, value.
+      Example: [{"name":"param1","value":"val1"}]
+    required: false
+    default: ''
+  use-user-on-farm:
+    description: 'Use user credentials on the farm for launching'
+    required: false
+    default: 'false'
+  farm-user:
+    description: 'Farm username (if different from vapi-user)'
+    required: false
+    default: ''
+  farm-password:
+    description: 'Farm password (if different from vapi-password)'
+    required: false
+    default: ''
+  user-private-ssh-key:
+    description: 'Use stored private SSH key for farm login'
+    required: false
+    default: 'false'
+  env-source-file:
+    description: 'Source file path for SSH login environment setup'
+    required: false
+    default: ''
+  env-source-file-type:
+    description: 'Shell type for env source file (BSH or CSH)'
+    required: false
+    default: 'BSH'
+
+  # --- API Mode ---
+  api-url:
+    description: 'The vAPI REST endpoint path (e.g. /sessions/list)'
+    required: false
+    default: ''
+  api-method:
+    description: 'HTTP method for the API call (POST, GET, PUT, DELETE)'
+    required: false
+    default: 'POST'
+  api-input:
+    description: 'Static JSON input for the API call'
+    required: false
+    default: '{}'
+  api-input-file:
+    description: 'Path to a file containing JSON input for the API call'
+    required: false
+    default: ''
+
+  # --- Batch / Collect Mode ---
+  sessions-input-file:
+    description: 'Path to a file with pre-launched session names (one per line) for batch/collect mode'
+    required: false
+    default: ''
+
+  # --- Wait & State Resolvers ---
+  wait-for-session-end:
+    description: 'Wait for launched sessions to complete before finishing'
+    required: false
+    default: 'true'
+  session-timeout:
+    description: 'Timeout in minutes for waiting on session completion (0 = no timeout)'
+    required: false
+    default: '30'
+  poll-interval:
+    description: 'Interval in seconds between session status checks'
+    required: false
+    default: '60'
+  inaccessible-resolver:
+    description: 'Action on inaccessible state: fail, continue, or ignore'
+    required: false
+    default: 'fail'
+  stopped-resolver:
+    description: 'Action on stopped state: fail, continue, or ignore'
+    required: false
+    default: 'fail'
+  failed-resolver:
+    description: 'Action on failed state: fail, continue, or ignore'
+    required: false
+    default: 'fail'
+  done-resolver:
+    description: 'Action on done state: fail, continue, or ignore'
+    required: false
+    default: 'continue'
+  suspended-resolver:
+    description: 'Action on suspended state: fail, continue, or ignore'
+    required: false
+    default: 'continue'
+  fail-job-if-all-run-failed:
+    description: 'Fail the workflow step if all runs in the session failed'
+    required: false
+    default: 'false'
+  fail-job-unless-all-run-passed:
+    description: 'Fail the workflow step unless all runs in the session passed'
+    required: false
+    default: 'false'
+
+  # --- JUnit Report ---
+  generate-junit:
+    description: 'Generate a JUnit XML report from session runs'
+    required: false
+    default: 'false'
+  junit-output-path:
+    description: 'Output path for the JUnit XML report'
+    required: false
+    default: 'session_runs.xml'
+  extra-attributes:
+    description: 'Comma-separated list of extra run attributes to include in JUnit failure messages'
+    required: false
+    default: ''
+  no-append-seed:
+    description: 'Do not append the computed seed to test names in JUnit report'
+    required: false
+    default: 'false'
+
+outputs:
+  session-ids:
+    description: 'Comma-separated list of launched/monitored session IDs'
+    value: ${{ steps.vmanager.outputs.session-ids }}
+  session-status:
+    description: 'Final aggregated session status (completed, failed, etc.)'
+    value: ${{ steps.vmanager.outputs.session-status }}
+  api-output:
+    description: 'JSON output from the vAPI call (API mode only)'
+    value: ${{ steps.vmanager.outputs.api-output }}
+  api-output-file:
+    description: 'Path to the file containing the API output'
+    value: ${{ steps.vmanager.outputs.api-output-file }}
+  junit-report-path:
+    description: 'Path to the generated JUnit XML report'
+    value: ${{ steps.vmanager.outputs.junit-report-path }}
+  total-runs:
+    description: 'Total number of runs in the session'
+    value: ${{ steps.vmanager.outputs.total-runs }}
+  passed-runs:
+    description: 'Number of passed runs'
+    value: ${{ steps.vmanager.outputs.passed-runs }}
+  failed-runs:
+    description: 'Number of failed runs'
+    value: ${{ steps.vmanager.outputs.failed-runs }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run vManager Action
+      id: vmanager
+      shell: bash
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_VAPI_URL: ${{ inputs.vapi-url }}
+        INPUT_VAPI_USER: ${{ inputs.vapi-user }}
+        INPUT_VAPI_PASSWORD: ${{ inputs.vapi-password }}
+        INPUT_AUTH_REQUIRED: ${{ inputs.auth-required }}
+        INPUT_CONN_TIMEOUT: ${{ inputs.conn-timeout }}
+        INPUT_READ_TIMEOUT: ${{ inputs.read-timeout }}
+        INPUT_IGNORE_SSL_ERRORS: ${{ inputs.ignore-ssl-errors }}
+        INPUT_VSIF_PATH: ${{ inputs.vsif-path }}
+        INPUT_VSIF_INPUT_FILE: ${{ inputs.vsif-input-file }}
+        INPUT_ENV_VARIABLES: ${{ inputs.env-variables }}
+        INPUT_ATTR_VALUES: ${{ inputs.attr-values }}
+        INPUT_DEFINE_VALUES: ${{ inputs.define-values }}
+        INPUT_USE_USER_ON_FARM: ${{ inputs.use-user-on-farm }}
+        INPUT_FARM_USER: ${{ inputs.farm-user }}
+        INPUT_FARM_PASSWORD: ${{ inputs.farm-password }}
+        INPUT_USER_PRIVATE_SSH_KEY: ${{ inputs.user-private-ssh-key }}
+        INPUT_ENV_SOURCE_FILE: ${{ inputs.env-source-file }}
+        INPUT_ENV_SOURCE_FILE_TYPE: ${{ inputs.env-source-file-type }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_API_METHOD: ${{ inputs.api-method }}
+        INPUT_API_INPUT: ${{ inputs.api-input }}
+        INPUT_API_INPUT_FILE: ${{ inputs.api-input-file }}
+        INPUT_SESSIONS_INPUT_FILE: ${{ inputs.sessions-input-file }}
+        INPUT_WAIT_FOR_SESSION_END: ${{ inputs.wait-for-session-end }}
+        INPUT_SESSION_TIMEOUT: ${{ inputs.session-timeout }}
+        INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
+        INPUT_INACCESSIBLE_RESOLVER: ${{ inputs.inaccessible-resolver }}
+        INPUT_STOPPED_RESOLVER: ${{ inputs.stopped-resolver }}
+        INPUT_FAILED_RESOLVER: ${{ inputs.failed-resolver }}
+        INPUT_DONE_RESOLVER: ${{ inputs.done-resolver }}
+        INPUT_SUSPENDED_RESOLVER: ${{ inputs.suspended-resolver }}
+        INPUT_FAIL_JOB_IF_ALL_RUN_FAILED: ${{ inputs.fail-job-if-all-run-failed }}
+        INPUT_FAIL_JOB_UNLESS_ALL_RUN_PASSED: ${{ inputs.fail-job-unless-all-run-passed }}
+        INPUT_GENERATE_JUNIT: ${{ inputs.generate-junit }}
+        INPUT_JUNIT_OUTPUT_PATH: ${{ inputs.junit-output-path }}
+        INPUT_EXTRA_ATTRIBUTES: ${{ inputs.extra-attributes }}
+        INPUT_NO_APPEND_SEED: ${{ inputs.no-append-seed }}
+      run: python3 ${{ github.action_path }}/vmanager.py
+
