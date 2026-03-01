@@ -631,7 +631,7 @@ def generate_junit_xml(
             duration = _safe_duration(run.get("duration", 0))
             classname = _xml_safe(group_name)
 
-            seed_suffix = "" if no_append_seed else f" : Seed-{seed}"
+            seed_suffix = "" if no_append_seed else f" : {seed}"
             full_name = f"{test_name}{seed_suffix}"
 
             if status == "failed":
