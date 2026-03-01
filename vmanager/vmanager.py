@@ -574,66 +574,113 @@ def generate_junit_xml(
     attr_labels: dict[str, str],
     no_append_seed: bool,
 ) -> None:
-    """Generate a JUnit-compatible XML file from vManager run data."""
+    """Generate a JUnit-compatible XML file from vManager run data.
+
+    Produces the standard ``<testsuites>`` → ``<testsuite>`` → ``<testcase>``
+    hierarchy.  Runs are grouped by ``test_group`` so each group becomes its
+    own ``<testsuite>``.
+    """
     if not runs:
         log("No runs found – skipping JUnit XML generation.")
         return
 
-    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
-    lines.append(f'<testsuite tests="{len(runs)}" name="Verisium Manager">')
+    import socket
+    from collections import OrderedDict
 
+    hostname = _xml_safe(socket.gethostname())
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+    # Group runs by test_group → each group becomes a <testsuite>
+    suites: OrderedDict[str, list[dict]] = OrderedDict()
     for run in runs:
-        status = run.get("status", "NA")
-        test_group = _xml_safe(run.get("test_group", "NA"))
-        test_name = _xml_safe(run.get("test_name", "NA"))
-        seed = _xml_safe(run.get("computed_seed", "NA"))
-        duration = run.get("duration", 0)
-        try:
-            duration = int(duration)
-        except (ValueError, TypeError):
-            duration = 0
+        group = run.get("test_group", "default")
+        suites.setdefault(group, []).append(run)
 
-        seed_suffix = "" if no_append_seed else f" : Seed-{seed}"
-        full_name = f"{test_name}{seed_suffix}"
+    # Global totals for <testsuites>
+    total_tests = len(runs)
+    total_failures = sum(1 for r in runs if r.get("status") == "failed")
+    total_errors = 0
+    total_time = sum(_safe_duration(r.get("duration", 0)) for r in runs)
 
-        if status == "failed":
-            error_name = _xml_safe(run.get("first_failure_name", "RUN_STILL_IN_PROGRESS"))
-            error_desc = _xml_safe(run.get("first_failure_description",
-                "Run is in state running, other or waiting. "
-                "Reason for run to mark as failed is because session changed status."))
-            extra = _build_extra_attr_text(run, extra_attrs, attr_labels)
-            lines.append(
-                f'    <testcase classname="{test_group}" name="{full_name}" time="{duration}">'
-            )
-            lines.append(
-                f'      <failure message="{error_name}" type="{error_name}">'
-                f'First Error Description: \n{error_desc}\n'
-                f'Computed Seed: \n{seed}\n'
-                f'{extra}'
-                f'</failure>'
-            )
-            lines.append('    </testcase>')
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append(
+        f'<testsuites name="Verisium Manager" tests="{total_tests}" '
+        f'failures="{total_failures}" errors="{total_errors}" '
+        f'time="{total_time}">'
+    )
 
-        elif status in ("stopped", "running", "other", "waiting"):
-            lines.append(
-                f'    <testcase classname="{test_group}" name="{full_name}" time="{duration}">'
-            )
-            lines.append('      <skipped />')
-            lines.append('    </testcase>')
+    for suite_idx, (group_name, group_runs) in enumerate(suites.items()):
+        suite_tests = len(group_runs)
+        suite_failures = sum(1 for r in group_runs if r.get("status") == "failed")
+        suite_skipped = sum(
+            1 for r in group_runs if r.get("status") in ("stopped", "running", "other", "waiting")
+        )
+        suite_time = sum(_safe_duration(r.get("duration", 0)) for r in group_runs)
 
-        else:
-            # passed or other terminal
-            lines.append(
-                f'    <testcase classname="{test_group}" name="{full_name}" time="{duration}"/>'
-            )
+        lines.append(
+            f'  <testsuite id="{suite_idx}" name="{_xml_safe(group_name)}" '
+            f'tests="{suite_tests}" failures="{suite_failures}" errors="0" '
+            f'skipped="{suite_skipped}" time="{suite_time}" '
+            f'timestamp="{timestamp}" hostname="{hostname}">'
+        )
 
-    lines.append('</testsuite>')
+        for run in group_runs:
+            status = run.get("status", "NA")
+            test_name = _xml_safe(run.get("test_name", "NA"))
+            seed = _xml_safe(run.get("computed_seed", "NA"))
+            duration = _safe_duration(run.get("duration", 0))
+            classname = _xml_safe(group_name)
+
+            seed_suffix = "" if no_append_seed else f" : Seed-{seed}"
+            full_name = f"{test_name}{seed_suffix}"
+
+            if status == "failed":
+                error_name = _xml_safe(run.get("first_failure_name", "RUN_STILL_IN_PROGRESS"))
+                error_desc = _xml_safe(run.get("first_failure_description",
+                    "Run is in state running, other or waiting. "
+                    "Reason for run to mark as failed is because session changed status."))
+                extra = _build_extra_attr_text(run, extra_attrs, attr_labels)
+                lines.append(
+                    f'    <testcase classname="{classname}" name="{full_name}" time="{duration}">'
+                )
+                lines.append(
+                    f'      <failure message="{error_name}" type="{error_name}">'
+                    f'First Error Description: \n{error_desc}\n'
+                    f'Computed Seed: \n{seed}\n'
+                    f'{extra}'
+                    f'</failure>'
+                )
+                lines.append('    </testcase>')
+
+            elif status in ("stopped", "running", "other", "waiting"):
+                lines.append(
+                    f'    <testcase classname="{classname}" name="{full_name}" time="{duration}">'
+                )
+                lines.append(f'      <skipped message="Run status: {_xml_safe(status)}"/>')
+                lines.append('    </testcase>')
+
+            else:
+                lines.append(
+                    f'    <testcase classname="{classname}" name="{full_name}" time="{duration}"/>'
+                )
+
+        lines.append('  </testsuite>')
+
+    lines.append('</testsuites>')
 
     xml_content = "\n".join(lines) + "\n"
     os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(xml_content)
     log(f"JUnit XML report written to: {output_path}")
+
+
+def _safe_duration(value) -> int:
+    """Convert a duration value to an integer number of seconds."""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
 
 
 def _xml_safe(text) -> str:
@@ -886,16 +933,8 @@ def main() -> None:
         # Write session status properties file
         _write_session_status(session_ids, aggregated, cfg.vapi_url)
 
-        # Check fail conditions
-        if cfg.fail_if_all_failed and stats["total_runs"] > 0:
-            if stats["total_runs"] == stats["failed"]:
-                fail("All runs failed in the regression.")
-
-        if cfg.fail_unless_all_passed and stats["total_runs"] > 0:
-            if stats["total_runs"] != stats["passed"]:
-                fail("Not all runs passed the regression.")
-
-        # Generate JUnit XML
+        # Generate JUnit XML before checking fail conditions so the
+        # report is available even when the regression fails.
         if cfg.generate_junit:
             log_group_start("JUnit XML Report Generation")
             extra_list = [a.strip() for a in cfg.extra_attributes.split(",") if a.strip()] if cfg.extra_attributes else []
@@ -917,6 +956,15 @@ def main() -> None:
             log_group_end()
 
         log_group_end()
+
+        # Check fail conditions
+        if cfg.fail_if_all_failed and stats["total_runs"] > 0:
+            if stats["total_runs"] == stats["failed"]:
+                fail("All runs failed in the regression.")
+
+        if cfg.fail_unless_all_passed and stats["total_runs"] > 0:
+            if stats["total_runs"] != stats["passed"]:
+                fail("Not all runs passed the regression.")
 
         if not success:
             fail("One or more sessions ended in a failure state.")
