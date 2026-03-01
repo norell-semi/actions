@@ -178,6 +178,12 @@ inputs:
     required: false
     default: 'false'
 
+  # --- Session Export ---
+  session-export-path:
+    description: 'Directory path on the NFS where sessions are exported (.vsofx). Leave empty to skip export.'
+    required: false
+    default: ''
+
 outputs:
   session-ids:
     description: 'Comma-separated list of launched/monitored session IDs'
@@ -203,6 +209,9 @@ outputs:
   failed-runs:
     description: 'Number of failed runs'
     value: ${{ steps.vmanager.outputs.failed-runs }}
+  session-export-path:
+    description: 'Path where sessions were exported (if export was requested)'
+    value: ${{ steps.vmanager.outputs.session-export-path }}
 
 runs:
   using: 'composite'
@@ -249,5 +258,6 @@ runs:
         INPUT_JUNIT_OUTPUT_PATH: ${{ inputs.junit-output-path }}
         INPUT_EXTRA_ATTRIBUTES: ${{ inputs.extra-attributes }}
         INPUT_NO_APPEND_SEED: ${{ inputs.no-append-seed }}
+        INPUT_SESSION_EXPORT_PATH: ${{ inputs.session-export-path }}
       run: python3 ${{ github.action_path }}/vmanager.py
 

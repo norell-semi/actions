@@ -144,6 +144,9 @@ class Config:
         self.extra_attributes = env("INPUT_EXTRA_ATTRIBUTES", "")
         self.no_append_seed = tobool(env("INPUT_NO_APPEND_SEED", "false"))
 
+        # Session export
+        self.session_export_path = env("INPUT_SESSION_EXPORT_PATH", "")
+
 
 # ---------------------------------------------------------------------------
 # vAPI HTTP Client
@@ -370,6 +373,28 @@ class VAPIClient:
         except Exception as e:
             warn(f"Failed to fetch attribute labels: {e}")
         return labels
+
+    def export_sessions(self, session_ids: list[str], export_path: str) -> None:
+        """Export sessions to .vsofx files at the given directory path."""
+        body = json.dumps({
+            "rs": {
+                "filter": {
+                    "@c": ".InFilter",
+                    "attName": "id",
+                    "operand": "IN",
+                    "values": session_ids,
+                },
+            },
+            "withSessionDir": True,
+            "deleteSessionOption": "NO_DELETION",
+            "topDir": export_path,
+        })
+        log(f"Exporting {len(session_ids)} session(s) to: {export_path}")
+        try:
+            result = self.request("/rest/sessions/export", "POST", body)
+            log(f"Session export complete. Response: {result}")
+        except VAPIError as e:
+            warn(f"Failed to export sessions: {e}")
 
     def suspend_sessions(self, session_ids: list[str]) -> None:
         """Suspend (pause) sessions."""
@@ -953,6 +978,14 @@ def main() -> None:
                 no_append_seed=cfg.no_append_seed,
             )
             set_output("junit-report-path", cfg.junit_output_path)
+            log_group_end()
+
+        # Export sessions before checking fail conditions so the
+        # export is available even when the regression fails.
+        if cfg.session_export_path:
+            log_group_start("Session Export")
+            client.export_sessions(session_ids, cfg.session_export_path)
+            set_output("session-export-path", cfg.session_export_path)
             log_group_end()
 
         log_group_end()
