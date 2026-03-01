@@ -984,8 +984,10 @@ def main() -> None:
         # export is available even when the regression fails.
         if cfg.session_export_path:
             log_group_start("Session Export")
-            client.export_sessions(session_ids, cfg.session_export_path)
-            set_output("session-export-path", cfg.session_export_path)
+            export_path = os.path.abspath(cfg.session_export_path)
+            os.makedirs(export_path, exist_ok=True)
+            client.export_sessions(session_ids, export_path)
+            set_output("session-export-path", export_path)
             log_group_end()
 
         log_group_end()
